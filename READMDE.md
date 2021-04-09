@@ -1,5 +1,22 @@
 #       SELinux
-##  1.1 Основные термины, использующиеся в SELinux
+
+#   2.  Общая теория, примеры, полезности.
+
+>**По умолчанию, в RHEL-based дистрибутивах используется основанная на TE и RBAC политика targeted (целевая). Название «целевая» эта политика получила потому, что ограничивает только потенциально уязвимые сервисы, при этом доверенные выполняются в неограниченном домене unconfined_t и не управляются политиками SELinux.**
+
+Ссылки на статьи и документацию:
+
+[Документация по SELinux Fedora Project](https://docs.fedoraproject.org/ru-RU/Fedora/13/html/Security-Enhanced_Linux/index.html)  
+
+Общий принцип работы SELinux:
+![Общий принцип работы SELinux](Images/SELinux_all.png "Общий принцип работы SELinux")
+
+Развёрнутый вариант работы SELinux:
+![](Images/SELinux_all_kernel.png)
+
+
+
+##  2.1 Основные термины, использующиеся в SELinux
 
 - **_Домен_** — список действий, которые может выполнять процесс. Обычно в качестве домена определяется минимально-возможный набор действий, при помощи которых процесс способен функционировать. Таким образом, если процесс дискредитирован, злоумышленнику не удастся нанести большого вреда.
 
@@ -9,8 +26,9 @@
 
 - **_Контекст безопасности_** — все атрибуты SELinux — роли, типы и домены.
 
+___
 
-##    1.2 Основные инструменты SELinux
+##    2.2 Основные инструменты SELinux
 
 **_Пакет setools-console:_**
 
@@ -24,35 +42,290 @@
 
   - audit2allow
   - audit2why
+  - semanage
 
 **_Пакет policycoreutils-newrole:_**
 
   - newrole
 
+**_Пакет setroubleshoot-server:_**
 
-Особенности работы:
-Если нужно запустить несговорчивое или самосборное приложение - запускать его надо из каталога /opt, в нем SELinux не работает.
+  - sealert
+___
+#### 2.2.1 Команды управления SELinux
+
+>**Особенности работы:**  
+**Если нужно запустить несговорчивое или самосборное приложение - запускать его надо из каталога /opt, в нем SELinux не работает.**
+
+___
+
+- **_semanage_** - Утилита управления политикой SELinux [man страничка](https://www.opennet.ru/man.shtml?topic=semanage&category=8&russian=0)
+Смотрим информацию о правах пользователей:  
+
+    Параметры запуска:  
+
+  1. Определить контекст файлов для всего, расположенного в \/web (потом это определение используется утилитой restorecon):
+
+          $ semanage fcontext -a -t httpd_sys_content_t "/web(/.*)?"
+
+
+  2.  Список логинов:
+
+            $ semanage login -l
+
+            Имя входа            Пользователь SELinux Диапазон MLS/MCS     Служба
+            __default__          unconfined_u         s0-s0:c0.c1023       *
+            root                 unconfined_u         s0-s0:c0.c1023       *
+
+  3. Список портов
+
+            $ semanage port -l
+
+            ....
+            dns_port_t                     tcp      53
+            dns_port_t                     udp      53
+            dnssec_port_t                  tcp      8955
+            ....
+
+
+Смотрим контекст безопасности субъекта:
+
+    ls -Z /usr/sbin/nginx                                                                               
+    -rwxr-xr-x. root root **system_u:object_r:httpd_exec_t**:s0 /usr/sbin/nginx
+
+Смотрим контекст безопасности процесса:
+
+    ps -Z 940
+    LABEL                             PID TTY      STAT   TIME COMMAND
+    unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 940 pts/0 S   0:00 su -l
+
+
+- **_sealert_** - Используется для анализа логов и вывода сообщений об ошибках доступа. Выводит возможные решения проблемы
+
+Пример запуска программы:
+
+    sealert -a /var/log/audit/audit.log
+
+<details>
+    <summary>Вывод запуска команды sealert -a </summary>
+
+
+      found 2 alerts in /var/log/audit/audit.log
+      --------------------------------------------------------------------------------
+
+      SELinux is preventing /usr/bin/chcon from using the mac_admin capability.
+
+      *****  Plugin catchall (100. confidence) suggests   **************************
+
+      If you believe that chcon should have the mac_admin capability by default.
+      Then you should report this as a bug.
+      You can generate a local policy module to allow this access.
+      Do
+      allow this access for now by executing:
+      # ausearch -c 'chcon' --raw | audit2allow -M my-chcon
+      # semodule -i my-chcon.pp
+
+
+      Additional Information:
+      Source Context                unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1
+      023
+      Target Context                unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1
+      023
+      Target Objects                Unknown [ capability2 ]
+      Source                        chcon
+      Source Path                   /usr/bin/chcon
+      Port                          <Unknown>
+      Host                          <Unknown>
+      Source RPM Packages           coreutils-8.22-24.el7.x86_64
+      Target RPM Packages
+      Policy RPM                    selinux-policy-3.13.1-266.el7.noarch
+      Selinux Enabled               True
+      Policy Type                   targeted
+      Enforcing Mode                Enforcing
+      Host Name                     selinsrv
+      Platform                      Linux selinsrv 3.10.0-1127.el7.x86_64 #1 SMP Tue
+      Mar 31 23:36:51 UTC 2020 x86_64 x86_64
+      Alert Count                   2
+      First Seen                    2021-04-09 08:51:52 +03
+      Last Seen                     2021-04-09 08:57:46 +03
+      Local ID                      b60ecd73-9b0a-4023-b3d6-174f32b07916
+
+      Raw Audit Messages
+      type=AVC msg=audit(1617947866.849:125): avc:  denied  { mac_admin } for  pid=1296 comm="chcon" capability=33  scontext=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 tcontext=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 tclass=capability2 permissive=0
+
+
+      type=SYSCALL msg=audit(1617947866.849:125): arch=x86_64 syscall=setxattr success=no exit=EINVAL a0=239a0e0 a1=7fc8da637f6a a2=239b5b0 a3=1e items=0 ppid=941 pid=1296 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=chcon exe=/usr/bin/chcon subj=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 key=(null)
+
+      Hash: chcon,unconfined_t,unconfined_t,capability2,mac_admin
+
+      --------------------------------------------------------------------------------
+      SELinux is preventing /usr/sbin/nginx from name_bind access on the tcp_socket port 4080.
+
+      *****  Plugin bind_ports (92.2 confidence) suggests   ************************
+
+      If you want to allow /usr/sbin/nginx to bind to network port 4080
+      Then you need to modify the port type.
+      Do
+      # semanage port -a -t PORT_TYPE -p tcp 4080
+      where PORT_TYPE is one of the following: http_cache_port_t, http_port_t, jboss_management_port_t, jboss_messaging_port_t, ntop_port_t, puppet_port_t.
+
+      *****  Plugin catchall_boolean (7.83 confidence) suggests   ******************
+
+      If you want to allow nis to enabled
+      Then you must tell SELinux about this by enabling the 'nis_enabled' boolean.
+
+      Do
+      setsebool -P nis_enabled 1
+
+      *****  Plugin catchall (1.41 confidence) suggests   **************************
+
+      If you believe that nginx should be allowed name_bind access on the port 4080 tcp_socket by default.
+      Then you should report this as a bug.
+      You can generate a local policy module to allow this access.
+      Do
+      allow this access for now by executing:
+      # ausearch -c 'nginx' --raw | audit2allow -M my-nginx
+      # semodule -i my-nginx.pp
+
+
+      Additional Information:
+      Source Context                system_u:system_r:httpd_t:s0
+      Target Context                system_u:object_r:unreserved_port_t:s0
+      Target Objects                port 4080 [ tcp_socket ]
+      Source                        nginx
+      Source Path                   /usr/sbin/nginx
+      Port                          4080
+      Host                          <Unknown>
+      Source RPM Packages           nginx-1.16.1-3.el7.x86_64
+      Target RPM Packages
+      Policy RPM                    selinux-policy-3.13.1-266.el7.noarch
+      Selinux Enabled               True
+      Policy Type                   targeted
+      Enforcing Mode                Enforcing
+      Host Name                     selinsrv
+      Platform                      Linux selinsrv 3.10.0-1127.el7.x86_64 #1 SMP Tue
+      Mar 31 23:36:51 UTC 2020 x86_64 x86_64
+      Alert Count                   1
+      First Seen                    2021-04-09 11:28:07 +03
+      Last Seen                     2021-04-09 11:28:07 +03
+      Local ID                      42e7b61e-bc6d-48e2-928b-e6d43c0cfce5
+
+      Raw Audit Messages
+      type=AVC msg=audit(1617956887.82:150): avc:  denied  { name_bind } for  pid=1581 comm="nginx" src=4080 scontext=system_u:system_r:httpd_t:s0 tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket permissive=0
+      type=SYSCALL msg=audit(1617956887.82:150): arch=x86_64 syscall=bind success=no exit=EACCES a0=6 a1=558af4da2568 a2=10 a3=7ffc7c64f2e0 items=0 ppid=1 pid=1581 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=nginx exe=/usr/sbin/nginx subj=system_u:system_r:httpd_t:s0 key=(null)
+
+      Hash: nginx,httpd_t,unreserved_port_t,tcp_socket,name_bind
+
+
+
+</details>
+
+
+- **_sesearch_** - Утилита опроса политики SELinux [man страничка](http://manpages.ubuntu.com/manpages/hirsute/ru/man1/sesearch.1.html)
+
+Пример поиска разрешающих правил для типа httpd_t:
+
+    sesearch -A -s httpd_t | grep 'allow httpd_t'
+    .......
+    allow httpd_t zarafa_var_lib_t : dir { ioctl read write create getattr setattr lock unlink link rename
+    add_name remove_name reparent search rmdir open } ;
+    allow httpd_t antivirus_t : process transition ;
+    .......
+
+- **_sestatus_** - Узнать в каком режиме работает SELinux:
+
+      [root@selinsrv ~]# sestatus
+      SELinux status:                 enabled         <---- SELinux включен
+      SELinuxfs mount:                /sys/fs/selinux
+      SELinux root directory:         /etc/selinux
+      Loaded policy name:             targeted
+      Current mode:                   enforcing       <---- В каком режиме работает SELinux на данный момент
+      Mode from config file:          enforcing       <---- Режим, в котором будет SELinux после перезагрузки
+      Policy MLS status:              enabled
+      Policy deny_unknown status:     allowed
+      Max kernel policy version:      31
+
+- **_getenforce_** - Узнать в каком режиме работает SELinux:
+-
+      root@selinsrv ~]# getenforce
+      Enforcing                     <---- Статус SELinux
+
+- **_setenforce_** - Изменение режима работы SELinux (включить SELinux - 1, выключить - 0):
+-
+      setenforce 1
+
+- **_chcon_** - Меняем тип в контексте каталога ( исходный тип - system_u:object_r:**_admin_home_t_**:s0 root):
+
+      chcon -R -t ssh_home_t /root     <---- Установили тип контекста каталога /root на **_ssh_home_t_**
+
+- **_restorecon_** - Восстанавливаем контекст каталога:
+
+      restorecon -v /root
+
+- **_audit2why_** - Определить из сообщения аудита SELinux причину запрета доступа [man страничка](https://www.opennet.ru/man.shtml?topic=audit2allow&category=1&russian=0)
+
+    Смотрим ошибки и рекомендации в audit.log:
+
+        [root@selinsrv ~]# audit2why < /var/log/audit/audit.log
+
+        type=AVC msg=audit(1617947512.378:124): avc:  denied  { mac_admin } for  pid=1238 comm="chcon" capability=33  scontext=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 tcontext=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 tclass=capability2 permissive=0
+
+- **_audit2allow_** - Создает разрешающие правила политики SELinux из файлов журналов, содержащих сообщения о запрете операций [man страничка](https://www.opennet.ru/man.shtml?topic=audit2allow&category=1&russian=0):
+
+      [root@selinsrv ~]# audit2allow -M httpd_add --debug < /var/log/audit/audit.log
+
+- **_semodule_** - Утилита управления пакетами модулей политики SELinux.[man страничка](https://www.opennet.ru/man.shtml?topic=semodule&category=8&russian=0)
+
+    Загружаем модуль:
+
+      semodule -i httpd_add.pp
+
+- **_ausearch_** -поиск по журналу аудита
+
+    Пример запуска:
+
+      [root@selinsrv ~]# ausearch -c 'nginx' | audit2allow -M prv_nginx  <---- Найти в audit.log строку с проблемой по nginx, и с помощью audit2allow сделать разрешающий модуль.
+
+ ___
 
 Контексты  (то есть политики) уже есть в системе, об этом позаботились создатели дистрибутива и разработчики приложений. Контексты лежат вот по этому пути:
 
         /etc/selinux/targeted/contexts/files
 
 
+Параметризованные политики SELinux:
 
+представляют из себя политики, которые описаны переменные с булевым типом (on/off). Управляются утилитами: getsebool и setsebool
+
+- **_getsebool_** -  Просмотр булевых параметров типов в SELinux
+
+
+      Пример работы:
+
+          [root@selinsrv ~]# getsebool -a | grep zabbix
+          httpd_can_connect_zabbix --> off
+          zabbix_can_network --> off
+          zabbix_run_sudo --> off
+
+
+- **_setsebool_** - Включение или отключение политики
+
+      Пример работы:
+
+          [root@selinsrv ~]# setsebool -P  zabbix_can_network on
+
+          [root@selinsrv ~]# getsebool -a | grep zabbix
+          httpd_can_connect_zabbix --> off
+          zabbix_can_network --> on
+          zabbix_run_sudo --> off
 
 
 
 Как происходит наследование типов в SELinux?
-Примерно также, как и все прочие права в Linux - например в случае
-создания файлов в каталоге, известном определенному контексту,
-файл наследует тип этого каталога.
-Context transition (переход контекста) может быть инициирован
-политикой, такими инструментами, как runcon, или с помощью
-SELinux API
+Примерно также, как и все прочие права в Linux - например в случае создания файлов в каталоге, известном определенному контексту, файл наследует тип этого каталога.  
+Context transition (переход контекста) может быть инициирован политикой, такими инструментами, как runcon, или с помощью SELinux API.  
 Переход Process context (domain) может происходить при наличии
 трех условий:
----целевой контекст файла является исполняемым для исходного
-домена
-целевой контекст файла помечен как точка входа для целевого
-домена
-исходный домен разрешен для перехода в целевой домен
+- целевой контекст файла является исполняемым для исходного домена
+- целевой контекст файла помечен как точка входа для целевого домена
+- исходный домен разрешен для перехода в целевой домен
