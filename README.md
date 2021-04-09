@@ -108,7 +108,8 @@ ___
 
 [Документация по SELinux Fedora Project](https://docs.fedoraproject.org/ru-RU/Fedora/13/html/Security-Enhanced_Linux/index.html)  
 
-Общий принцип работы SELinux:
+Общий принцип работы SELinux:  
+
 ![Общий принцип работы SELinux](Images/SELinux_all.png "Общий принцип работы SELinux")
 
 Развёрнутый вариант работы SELinux:
