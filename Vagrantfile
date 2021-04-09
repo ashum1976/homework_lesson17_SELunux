@@ -13,6 +13,6 @@ Vagrant.configure(2) do |config|
                     v.memory = 256
                     v.cpus = 1
                 end
-#               prod.vm.provision "shell", path: "sec_script.sh"
+               prod.vm.provision "shell", path: "run_script.sh"
             end
 end
