@@ -107,11 +107,11 @@ ___
 При запуске команды обновления зоны получаем ошибку - **update failed: SERVFAIL:**
 
 [vagrant@client ~]$ nsupdate -k /etc/named.zonetransfer.key
-\> server 192.168.50.10
-\> zone ddns.lab
-\> update add www.ddns.lab. 60 A 192.168.50.15
-\> send
-**pdate failed: SERVFAIL**
+      \> server 192.168.50.10
+      \> zone ddns.lab
+      \> update add www.ddns.lab. 60 A 192.168.50.15
+      \> send
+      **pdate failed: SERVFAIL**
 
 <details>
     <summary>Вывод запуска команды sealert -a  на сервере ns01</summary>
