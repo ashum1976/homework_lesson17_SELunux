@@ -20,6 +20,8 @@ ___
 
 **Решение:**
 
+# ДЗ часть 1 работа с nginx
+
 1. Редактируем конфиг файл nginx для запуска на нестандартном порту 8008:
 
 ![Запуск nginx на порту 8088](Images/hw_selinux_nginx8088_1.png "Порт 8088")
@@ -100,6 +102,122 @@ ___
 
 ___
 
+# ДЗ часть 2 работа со стендом dns (named)
+
+При запуске команды обновления зоны получаем ошибку - **update failed: SERVFAIL:**
+
+[vagrant@client ~]$ nsupdate -k /etc/named.zonetransfer.key
+\> server 192.168.50.10
+\> zone ddns.lab
+\> update add www.ddns.lab. 60 A 192.168.50.15
+\> send
+**pdate failed: SERVFAIL**
+
+<details>
+    <summary>Вывод запуска команды sealert -a  на сервере ns01</summary>
+
+        [root@ns01 ~]# sealert -a /var/log/audit/audit.log
+        100% done
+        found 1 alerts in /var/log/audit/audit.log
+        --------------------------------------------------------------------------------
+
+        SELinux is preventing /usr/sbin/named from create access on the file named.ddns.lab.view1.jnl.
+
+        *****  Plugin catchall_labels (83.8 confidence) suggests   *******************
+
+        If you want to allow named to have create access on the named.ddns.lab.view1.jnl file
+        Then you need to change the label on named.ddns.lab.view1.jnl
+        Do
+        # semanage fcontext -a -t FILE_TYPE 'named.ddns.lab.view1.jnl'
+        where FILE_TYPE is one of the following: dnssec_trigger_var_run_t, ipa_var_lib_t, krb5_host_rcache_t, krb5_keytab_t, named_cache_t, named_log_t, named_tmp_t, named_var_run_t, named_zone_t.
+        Then execute:
+        restorecon -v 'named.ddns.lab.view1.jnl'
+
+
+        *****  Plugin catchall (17.1 confidence) suggests   **************************
+
+        If you believe that named should be allowed create access on the named.ddns.lab.view1.jnl file by default.
+        Then you should report this as a bug.
+        You can generate a local policy module to allow this access.
+        Do
+        allow this access for now by executing:
+        # ausearch -c 'isc-worker0000' --raw | audit2allow -M my-iscworker0000
+        # semodule -i my-iscworker0000.pp
+
+
+        Additional Information:
+        Source Context                system_u:system_r:named_t:s0
+        Target Context                system_u:object_r:etc_t:s0
+        Target Objects                named.ddns.lab.view1.jnl [ file ]
+        Source                        isc-worker0000
+        Source Path                   /usr/sbin/named
+        Port                          <Unknown>
+        Host                          <Unknown>
+        Source RPM Packages           bind-9.11.4-26.P2.el7_9.4.x86_64
+        Target RPM Packages
+        Policy RPM                    selinux-policy-3.13.1-266.el7.noarch
+        Selinux Enabled               True
+        Policy Type                   targeted
+        Enforcing Mode                Enforcing
+        Host Name                     ns01
+        Platform                      Linux ns01 3.10.0-1127.el7.x86_64 #1 SMP Tue Mar
+        31 23:36:51 UTC 2020 x86_64 x86_64
+        Alert Count                   1
+        First Seen                    2021-04-12 09:47:46 UTC
+        Last Seen                     2021-04-12 09:47:46 UTC
+        Local ID                      4a3e7a80-8053-4602-aa5a-1d3682689a32
+
+        Raw Audit Messages
+
+
+        type=AVC msg=audit(1618220866.495:1981): avc:  denied  { create } for  pid=5262 comm="isc-worker0000" name="named.ddns.lab.view1.jnl" scontext=system_u:system_r:named_t:s0 tcontext=system_u:object_r:etc_t:s0 tclass=file permissive=0
+
+
+        type=SYSCALL msg=audit(1618220866.495:1981): arch=x86_64 syscall=open success=no exit=EACCES a0=7fe65f9d0050 a1=241 a2=1b6 a3=24 items=0 ppid=1 pid=5262 auid=4294967295 uid=25 gid=25 euid=25 suid=25 fsuid=25 egid=25 sgid=25 fsgid=25 tty=(
+        none) ses=4294967295 comm=isc-worker0000 exe=/usr/sbin/named subj=system_u:system_r:named_t:s0 key=(null)
+
+        Hash: isc-worker0000,named_t,etc_t,file,create
+
+</details>
+
+Можно создать разрешающий можуль, как предагает вывод команды sealert:
+
+      # ausearch -c 'isc-worker0000' --raw | audit2allow -M my-iscworker0000
+      # semodule -i my-iscworker0000.pp
+
+но такой подход будет не совсем правильный.
+
+  Установим тип для папки /etc/named/dynamic/ и файлов в значение named_zone_t, что позволит записать файл зоны в данную папку. Такой подход будет более безопастный, чем   создавать модуль с разрешением на запись в файлы помеченные типом etc_t, что даёт теоретическую возможность писать во все файлы в папке /etc/, в частности shadow/passwd файлы.
+
+      Исходный тип на папке "/etc/named/dynamic/""  установлен "etc_t"
+
+      [root@ns01 ~]# ls -Z /etc/named/dynamic/
+      -rw-rw----. named named system_u:object_r:etc_t:s0 named.ddns.lab
+      -rw-rw----. named named system_u:object_r:etc_t:s0 named.ddns.lab.view1
+
+      chcon -vR -t named_zone_t /etc/named/dynamic/
+
+      После выполнения команды:
+
+      [root@ns01 ~]# ls -Z /etc/named/dynamic/
+      -rw-rw----. named named system_u:object_r:named_zone_t:s0 named.ddns.lab
+      -rw-rw----. named named system_u:object_r:named_zone_t:s0 named.ddns.lab.view1
+
+      Выполняем перезапуск named демона:
+
+      [root@ns01 ~]#  
+
+      Запускаем на клиенте "client" команду на обновление зоны, и смотрим папку /etc/named/dynamic/
+
+      root@ns01 ~]# ll /etc/named/dynamic/
+      total 12
+      -rw-rw----. 1 named named 509 Apr 12 09:02 named.ddns.lab
+      -rw-rw----. 1 named named 509 Apr 12 09:02 named.ddns.lab.view1
+      -rw-r--r--. 1 named named 700 Apr 12 09:59 named.ddns.lab.view1.jnl
+
+Всё работает !!!
+
+
 #   2.  Общая теория, примеры, полезности.
 
 >**По умолчанию, в RHEL-based дистрибутивах используется основанная на TE и RBAC политика targeted (целевая). Название «целевая» эта политика получила потому, что ограничивает только потенциально уязвимые сервисы, при этом доверенные выполняются в неограниченном домене unconfined_t и не управляются политиками SELinux.**
@@ -107,6 +225,7 @@ ___
 Ссылки на статьи и документацию:
 
 [Документация по SELinux Fedora Project](https://docs.fedoraproject.org/ru-RU/Fedora/13/html/Security-Enhanced_Linux/index.html)  
+[MLS/MCS и TE механизм мандатного управления доступом ](https://defcon.ru/os-security/1264/)  
 
 Общий принцип работы SELinux:  
 
@@ -157,6 +276,14 @@ ___
 
 >**Особенности работы:**  
 **Если нужно запустить несговорчивое или самосборное приложение - запускать его надо из каталога /opt, в нем SELinux не работает.**
+
+
+- **_seinfo_** - Утилита получения информации о политике SELinux. Позволяет пользователю опрашивать компоненты политики SELinux.
+
+
+    seinfo -afile_type -x  - вывести доступные типы файлов.
+    seinfo -adomain -x - вывести доступные домены
+
 
 ___
 
