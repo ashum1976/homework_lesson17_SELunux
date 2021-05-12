@@ -1,0 +1,12 @@
+cd module syslog_audit 1.0;
+
+require {
+        type auditd_log_t;
+        type syslogd_t;
+        class dir { getattr search read open };
+        class file { getattr read open ioctl };
+}
+
+#============= syslogd_t ==============
+allow syslogd_t auditd_log_t:dir { getattr search read open };
+allow syslogd_t auditd_log_t:file { getattr read open ioctl };
